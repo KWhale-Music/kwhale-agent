@@ -14,11 +14,11 @@ description: Карта кодовой базы KWhale — репозитори�
 |---|---|---|
 | `kwhale-v3/` | сервер + эталонный клиент-референс | Python 3.12, FastAPI, Postgres 16 (asyncpg), asyncio |
 | `kwhale-v3/server/` | API `:19001`, воркер скачивания, MCP рекомендаций | см. ниже |
-| `kwhale-android/` | Android-клиент (бывш. vkx-recreate) | Kotlin, Compose M3, Media3, 4 модуля |
+| `kwhale-android/` | Android-клиент | Kotlin, Compose M3, Media3, 4 модуля |
 | `agent/` | агент-слой: парсеры плейлистов, bridge, MCP, скиллы | Python 3.11+, httpx, fastmcp |
 | `playlist/`, `logs/`, `release/` | рабочие данные/артефакты (не код) | — |
 
-Не трогать: `kwhale-v3/client/` (форк Lune — референс), `murglar-re/` (RE-архив
+Не трогать: `kwhale-v3/client/` (форк Lune — референс), `RE-архив` (исторические материалы, вне деревьев; бывшие RE-дампы
 протоколов), `kwhale-android/re/` (RE-артефакты декомпиляции).
 
 ## Сервер: kwhale-v3/server
@@ -101,7 +101,7 @@ skills/              # kwhale-codebase, kwhale-ops, kwhale-connectors, kwhale-pr
 ## Договорённости
 
 - Перед правкой — бэкап по протоколу PLAN.md; одна правка — один пункт — тесты.
-- Бренд: проект = KWhale; старые имена (vkx/murglar) в код не возвращаем
+- Бренд: проект = KWhale; старые имена в код не возвращаем
   (в RE-доках символы оригинала маскированы `orig`).
 - Секреты: `.env` (chmod 600, не коммитить); токены источников — только через
   `source_accounts` (AES-GCM).
