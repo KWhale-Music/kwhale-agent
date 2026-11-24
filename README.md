@@ -1,64 +1,130 @@
-# kwhale-agent — агент-слой KWhale
+<div align="center">
 
-Переносимый набор **LLM-скиллов**, **standalone-парсеров плейлистов** и **MCP-сервера** для полного управления данными пользователя и кодовой базой KWhale: от переноса плейлистов и загрузки локальных треков до редактирования коллекций, рекомендаций и шеринга.
+**English** | [Русский](README.ru.md)
 
-## Структура
+<br/>
 
-```text
-agent/
-├── kwhale_agent/
-│   ├── playlists/           # независимые парсеры (без зависимости от сервера)
-│   │   ├── base.py          # TrackRef/ParsedPlaylist, нормализация, strip_match_noise
-│   │   ├── yandex.py        # публичные плейлисты Яндекс Музыки + редиректы + догидрация >150
-│   │   ├── soundcloud.py    # api-v2 + скрейп client_id + on.soundcloud.com/s/ редиректы
-│   │   ├── ytm.py           # YouTube Music InnerTube WEB_REMIX
-│   │   ├── vk.py            # VK audio.get (KWHALE_AGENT_VK_TOKEN / Kwhale_AGENT_VK_TOKEN)
-│   │   ├── textlist.py      # списки 'Artist - Title', CSV (Exportify/Spotify), M3U/M3U8
-│   │   └── ytdlp_fallback.py # универсальный fallback по URL через yt-dlp (+ YTDLP_PROXY/HTTPS_PROXY)
-│   ├── bridge.py            # async HTTP-мост в /v1 API (login/refresh, search?wait=true, playlists CRUD, uploads, mixes, share)
-│   ├── importer.py          # параллельный матч (ISRC + duration + fallback) → новый или существующий плейлист
-│   └── mcp_server.py        # stdio MCP (python -m kwhale_agent.mcp_server / kwhale-agent-mcp)
-├── scripts/smoke_playlists.py # read-only smoke парсеров
-├── tests/                     # изолированный тест-стенд без сети и БД
-└── skills/                    # переносимый пак скиллов для любого LLM-агента:
-    ├── kwhale-api/            # прямой /v1 HTTP-протокол без MCP (для внешнего агента)
-    ├── kwhale-ops/            # операционные сценарии поверх MCP + ссылка на kwhale-api
-    ├── kwhale-codebase/       # переносимая карта репозитория
-    ├── kwhale-connectors/     # внутренний контракт 9 серверных коннекторов
-    └── kwhale-proxy/          # sing-box и проксирование источников
-```
+<img src="docs/images/cover.png" alt="KWhale Agent" width="100%"/>
 
-## Установка и подключение к агенту
+# KWhale Agent
+
+**The agent layer for KWhale — playlist parsers, an MCP server, and a portable skill pack.**
+
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
+[![MCP](https://img.shields.io/badge/MCP-stdio-8A2BE2.svg)](https://modelcontextprotocol.io/)
+
+</div>
+
+Everything an LLM agent needs to manage a user's music collection on a
+[KWhale Server](https://github.com/kwhale-music/kwhale-server): standalone playlist
+parsers (Yandex Music, SoundCloud, YouTube Music, VK, text/CSV/M3U lists, `yt-dlp`
+fallback), a parallel-matching importer, a full-featured **MCP server**, and a
+**portable skill pack** that works with any agent — with or without MCP.
+
+## ✨ Features
+
+- **Standalone playlist parsers** — no server dependency; public Yandex Music playlists
+  (with redirect following and >150-track hydration), SoundCloud `api-v2` (with `client_id`
+  scraping and `on.soundcloud.com` redirects), YouTube Music InnerTube, VK `audio.get`,
+  plain `Artist - Title` lists, Exportify/Spotify CSV, M3U/M3U8, and a universal
+  `yt-dlp` fallback with optional proxy.
+- **Smart importer** — parallel track matching (ISRC + duration + text fallback) into a
+  new or existing playlist, with `dry_run`.
+- **MCP server** (`python -m kwhale_agent.mcp_server`) — ~30 tools: auth, playlist CRUD,
+  catalog search, likes, downloads, uploads, mixes, share links.
+- **Portable skill pack** — `kwhale-api` (raw `/v1` protocol, works without MCP),
+  `kwhale-ops` (operational scenarios), `kwhale-codebase`, `kwhale-connectors`,
+  `kwhale-proxy` (sing-box / proxy routing for sources).
+- **Isolated test stand** — the whole test suite runs without network and without a database.
+
+## 📸 Screenshots
+
+<img src="docs/images/screens-terminal.png" alt="Terminal / MCP session" width="100%"/>
+
+## 🚀 Quickstart
 
 ```bash
-cd agent
+git clone https://github.com/kwhale-music/kwhale-agent.git
+cd kwhale-agent
 python3 -m venv .venv
-.venv/bin/pip install -e ".[dev,fallback]"   # ставит httpx[socks], fastmcp, pytest, yt-dlp
-.venv/bin/python -m pytest tests -v          # проверка тест-стенда без сети
-.venv/bin/python -m kwhale_agent.mcp_server  # запуск MCP (stdio)
+.venv/bin/pip install -e ".[dev,fallback]"   # httpx[socks], fastmcp, pytest, yt-dlp
+
+.venv/bin/python -m pytest tests -v          # offline test suite
+.venv/bin/python -m kwhale_agent.mcp_server  # start MCP (stdio)
 ```
 
-Подключение пака к OpenCode / MCP-клиенту:
-- Скиллы можно подключать отдельно и переносимо — скопируй или прилинкуй подпапки `agent/skills/*` в каталог скиллов своего агента (например `.opencode/skills/`).
-- Шаблон конфига MCP лежит в `../release/.opencode/opencode.json.example`. В нём задаются путь к `<path-to-agent>/.venv/bin/python` и при желании env-параметры.
-- Для подключения внешнего агента **без MCP** достаточно приложить скилл `skills/kwhale-api/SKILL.md` — публичный URL сервиса, email и пароль агент запросит у пользователя сам (на проде `/openapi.json` и `/docs` могут отдавать `404`).
+Connect to your agent: copy or symlink `skills/*` into your agent's skills directory
+(e.g. `.opencode/skills/`), and register the MCP server in its config.
+For an external agent **without MCP**, ship `skills/kwhale-api/SKILL.md` — the agent
+asks the user for the instance URL and credentials itself.
 
-## Конфигурация (опционально через env, или через MCP `login`)
+## ⚙️ Configuration
 
-| Переменная | Назначение |
+| Variable | Purpose |
 |---|---|
-| `KWHALE_BASE_URL` | API URL инстанса (пользовательский публичный URL с `/v1`; локальный пример: `http://127.0.0.1:19001/v1`) |
-| `KWHALE_EMAIL` / `KWHALE_PASSWORD` | учётные данные аккаунта (вход строго по **email**, не по `username`) |
-| `KWHALE_DOWNLOAD_DIR` | каталог для `download_track(mode="file")` (по умолчанию `./downloads`) |
-| `KWHALE_AGENT_VK_TOKEN` | токен VK для `VkPlaylistParser` (поддерживается legacy-алиас `Kwhale_AGENT_VK_TOKEN`) |
-| `HTTPS_PROXY` / `YTDLP_PROXY` | прокси для парсеров и `ytdlp_fallback` (см. скилл `kwhale-proxy`) |
+| `KWHALE_BASE_URL` | instance API URL with `/v1` (e.g. `http://127.0.0.1:19001/v1`) |
+| `KWHALE_EMAIL` / `KWHALE_PASSWORD` | account credentials (login is by **email**) |
+| `KWHALE_DOWNLOAD_DIR` | target for `download_track(mode="file")` (default `./downloads`) |
+| `KWHALE_AGENT_VK_TOKEN` | VK token for `VkPlaylistParser` |
+| `HTTPS_PROXY` / `YTDLP_PROXY` | proxy for parsers and `yt-dlp` fallback (see `kwhale-proxy` skill) |
 
-Если `KWHALE_BASE_URL`, `KWHALE_EMAIL` и `KWHALE_PASSWORD` не заданы в env заранее, LLM-агент должен запросить их у пользователя и вызвать MCP-тулзу `login(email, password, base_url)` (либо выполнить `POST /v1/auth/login` по скиллу `kwhale-api`).
+If the env is empty, the agent should ask the user and call MCP `login(email, password, base_url)`.
 
-## Возможности MCP `kwhale-agent`
+## 🧭 MCP tools
 
-- **Auth и инфо:** `login`, `logout`, `kwhale_status`
-- **Парсинг и перенос плейлистов:** `list_supported_platforms`, `detect_playlist_platform`, `parse_playlist`, `parse_track_list`, `import_playlist_to_profile` (новый плейлист или дозапись в `playlist_id`, `dry_run`)
-- **CRUD и редактирование плейлистов:** `list_playlists`, `get_playlist` (полная пагинация >200 треков), `create_playlist`, `update_playlist`, `delete_playlist`, `add_tracks_to_playlist` (батчинг до 500 при серверном лимите 1000), `remove_track_from_playlist`, `reorder_playlist_tracks`, `like_playlist_tracks`
-- **Каталог, загрузки и библиотека:** `search_tracks` (с `wait=true` по умолчанию), `get_track_details`, `like_track`, `download_track`, `download_status`, `upload_track`, `manage_enrichments`, `list_library`
-- **Рекомендации и шеринг:** `list_mixes`, `get_mix_tracks`, `prompt_mix`, `create_share_link`
+- **Auth & info:** `login`, `logout`, `kwhale_status`
+- **Playlists & import:** `list_supported_platforms`, `detect_playlist_platform`,
+  `parse_playlist`, `parse_track_list`, `import_playlist_to_profile` (`dry_run`)
+- **Playlist CRUD:** `list_playlists`, `get_playlist` (full pagination for 200+ tracks),
+  `create_playlist`, `update_playlist`, `delete_playlist`, `add_tracks_to_playlist`,
+  `remove_track_from_playlist`, `reorder_playlist_tracks`, `like_playlist_tracks`
+- **Catalog & downloads:** `search_tracks` (`wait=true`), `get_track_details`, `like_track`,
+  `download_track`, `download_status`, `upload_track`, `manage_enrichments`, `list_library`
+- **Mixes & share:** `list_mixes`, `get_mix_tracks`, `prompt_mix`, `create_share_link`
+
+## 🏗 Structure
+
+```
+kwhale_agent/
+├── playlists/      # standalone parsers (yandex, soundcloud, ytm, vk, textlist, ytdlp fallback)
+├── bridge.py       # async HTTP bridge to the /v1 API
+├── importer.py     # parallel ISRC/duration/text matching importer
+└── mcp_server.py   # stdio MCP server
+skills/             # portable skill pack for any LLM agent
+tests/              # isolated, network-free test stand
+```
+
+## 🧭 Author's review
+
+*Honest notes from the author — this section is a draft and will keep evolving.*
+
+What I'm genuinely happy with:
+
+- **Parsers are standalone.** They don't import the server and don't need a database —
+  you can use this repo purely to scrape playlists into CSV and be happy.
+- **The offline test stand.** A test suite that runs with zero network and zero services
+  is the reason this repo is pleasant to change.
+- **The skill pack idea.** `kwhale-api` lets any agent drive KWhale over plain HTTP with
+  no MCP at all — portability beats integration depth here.
+
+What's honestly still rough:
+
+- **External APIs are fragile by nature.** The VK and YouTube Music parsers depend on
+  undocumented endpoints; expect them to break occasionally and be fixed.
+- **`yt-dlp` is a heavy fallback.** It works almost everywhere, but it drags a large
+  dependency behind it — hence the `[fallback]` extra being optional.
+- **Test coverage is uneven** — parsers and importer are well covered; the MCP surface
+  is thinner.
+
+## 🗺 Status
+
+Beta — used by the author to migrate real playlists between services.
+
+## 📄 License
+
+[AGPL-3.0](LICENSE) — same terms as the server.
+
+Third-party notes: parsers integrate third-party services through their existing web APIs.
+Use them in accordance with the terms of those services; the authors take no responsibility
+for misuse.
