@@ -125,6 +125,25 @@ class PlaylistParser:
         return t
 
     @staticmethod
+    def strip_match_noise(title: str) -> str:
+        """Strip parenthetical edition/feat suffixes for fallback catalog search."""
+        t = PlaylistParser.clean_title(title)
+        noise_re = re.compile(
+            r"\s*[\(\[](?:feat\.?|ft\.?|featuring|with|remaster(?:ed)?(?:\s+\d{4})?|"
+            r"\d{4}\s+remaster(?:ed)?|explicit|clean|deluxe(?:\s+edition)?|"
+            r"bonus\s+track|official\s+(?:video|audio|music\s+video|lyric\s+video)|lyrics?)"
+            r"[^\)\]]*[\)\]]\s*$",
+            re.IGNORECASE,
+        )
+        while True:
+            updated = noise_re.sub("", t).strip()
+            if updated == t:
+                break
+            t = updated
+        t = re.sub(r"\s+(?:feat|ft)\.?\s+.+$", "", t, flags=re.IGNORECASE).strip()
+        return t
+
+    @staticmethod
     def artist_title_from_label(label: str, uploader: str = "") -> tuple[list[str], str]:
         """'Artist - Title' -> (['Artist'], 'Title'); falls back to uploader."""
         label = (label or "").strip()

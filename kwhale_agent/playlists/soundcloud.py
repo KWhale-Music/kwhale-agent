@@ -1,9 +1,11 @@
 """SoundCloud playlist (set) parser — api-v2 with a scraped client_id.
 
-URLs: https://soundcloud.com/<user>/sets/<slug> (also /s/ short links).
+URLs:
+  * https://soundcloud.com/<user>/sets/<slug>
+  * https://on.soundcloud.com/<short> (and /s/ short links, resolved via redirect)
 
-Flow: scrape client_id from the site's JS bundles -> GET
-https://api-v2.soundcloud.com/resolve?url=... -> playlist.tracks[].
+Flow: resolve short link if needed -> scrape client_id from the site's JS
+bundles -> GET https://api-v2.soundcloud.com/resolve?url=... -> playlist.tracks[].
 Without a resolvable client_id the caller can fall back to ytdlp_fallback.
 """
 
@@ -15,7 +17,11 @@ import httpx
 
 from .base import ParsedPlaylist, ParseError, PlaylistParser, TrackRef
 
-_SC_URL_RE = re.compile(r"soundcloud\.com/[\w.-]+/sets/[\w-]+", re.IGNORECASE)
+_SC_URL_RE = re.compile(r"soundcloud\.com/[\w.-]+/sets/[\w.-]+", re.IGNORECASE)
+_SC_SHORT_RE = re.compile(
+    r"https?://(?:on\.soundcloud\.com/[\w-]+|(?:m\.)?soundcloud\.com/.+/s/[\w-]+)",
+    re.IGNORECASE,
+)
 _CLIENT_ID_RE = re.compile(r'client_id[=:]\s*["\']([\w-]{16,})["\']')
 _ASSET_RE = re.compile(r'https://a-v2\.sndcdn\.com/assets/[^"\']+\.js')
 
@@ -45,15 +51,26 @@ class SoundcloudPlaylistParser(PlaylistParser):
     url_hosts = ("soundcloud.com", "on.soundcloud.com")
 
     def can_parse(self, ref: str) -> bool:
-        return bool(_SC_URL_RE.search(ref))
+        return bool(_SC_URL_RE.search(ref) or _SC_SHORT_RE.search(ref))
 
     async def fetch_playlist(self, ref: str) -> ParsedPlaylist:
         m = _SC_URL_RE.search(ref)
-        if not m:
-            raise ParseError(f"soundcloud: cannot parse playlist ref {ref!r}")
-        url = "https://" + m.group(0)
-
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as http:
+            if m:
+                url = "https://" + m.group(0)
+            elif _SC_SHORT_RE.search(ref):
+                try:
+                    rr = await http.get(ref.strip(), headers=_UA)
+                except httpx.HTTPError as e:
+                    raise ParseError(f"soundcloud short-link resolve failed: {e}") from e
+                resolved = str(getattr(rr, "url", "") or "")
+                rm = _SC_URL_RE.search(resolved)
+                if not rm:
+                    raise ParseError(f"soundcloud: short link {ref!r} did not resolve to a playlist set")
+                url = "https://" + rm.group(0)
+            else:
+                raise ParseError(f"soundcloud: cannot parse playlist ref {ref!r}")
+
             cid = await scrape_client_id(http)
             if not cid:
                 raise ParseError("soundcloud: client_id scrape failed (use ytdlp fallback)")

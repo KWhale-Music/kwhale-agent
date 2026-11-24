@@ -1,74 +1,64 @@
 # kwhale-agent — агент-слой KWhale
 
-Пак скиллов + MCP для работы LLM-агента с KWhale: ориентация в кодовой базе,
-ручные поиски/скачивания, парсинг плейлистов из названных пользователем
-платформ и перенос их в профиль KWhale.
+Переносимый набор **LLM-скиллов**, **standalone-парсеров плейлистов** и **MCP-сервера** для полного управления данными пользователя и кодовой базой KWhale: от переноса плейлистов и загрузки локальных треков до редактирования коллекций, рекомендаций и шеринга.
 
 ## Структура
 
-```
-kwhale_agent/
-├── playlists/        # независимые парсеры платформ (не трогают серверные коннекторы!)
-│   ├── base.py       # TrackRef/ParsedPlaylist + нормализация + fuzzy-match
-│   ├── yandex.py     # публичный JSON API, без auth
-│   ├── soundcloud.py # api-v2 + скрейп client_id (из RU — через прокси)
-│   ├── ytm.py        # InnerTube WEB_REMIX browse
-│   ├── vk.py         # audio.get (нужен Kwhale_AGENT_VK_TOKEN)
-│   └── ytdlp_fallback.py  # любая ссылка через yt-dlp (опциональная зависимость)
-├── bridge.py         # мост в /v1 API (поиск, плейлисты, скачивания) — только публичный API
-├── importer.py       # acceptance-логика: парсинг → матч → плейлист в профиле
-└── mcp_server.py     # MCP (stdio): python -m kwhale_agent.mcp_server
-tests/                # тест-стенд: 21 test, без сети и БД
-scripts/smoke_playlists.py   # живой read-only smoke парсеров
-skills/               # kwhale-codebase, kwhale-ops, kwhale-connectors, kwhale-proxy
+```text
+agent/
+├── kwhale_agent/
+│   ├── playlists/           # независимые парсеры (без зависимости от сервера)
+│   │   ├── base.py          # TrackRef/ParsedPlaylist, нормализация, strip_match_noise
+│   │   ├── yandex.py        # публичные плейлисты Яндекс Музыки + редиректы + догидрация >150
+│   │   ├── soundcloud.py    # api-v2 + скрейп client_id + on.soundcloud.com/s/ редиректы
+│   │   ├── ytm.py           # YouTube Music InnerTube WEB_REMIX
+│   │   ├── vk.py            # VK audio.get (KWHALE_AGENT_VK_TOKEN / Kwhale_AGENT_VK_TOKEN)
+│   │   ├── textlist.py      # списки 'Artist - Title', CSV (Exportify/Spotify), M3U/M3U8
+│   │   └── ytdlp_fallback.py # универсальный fallback по URL через yt-dlp (+ YTDLP_PROXY/HTTPS_PROXY)
+│   ├── bridge.py            # async HTTP-мост в /v1 API (login/refresh, search?wait=true, playlists CRUD, uploads, mixes, share)
+│   ├── importer.py          # параллельный матч (ISRC + duration + fallback) → новый или существующий плейлист
+│   └── mcp_server.py        # stdio MCP (python -m kwhale_agent.mcp_server / kwhale-agent-mcp)
+├── scripts/smoke_playlists.py # read-only smoke парсеров
+├── tests/                     # изолированный тест-стенд без сети и БД
+└── skills/                    # переносимый пак скиллов для любого LLM-агента:
+    ├── kwhale-api/            # прямой /v1 HTTP-протокол без MCP (для внешнего агента)
+    ├── kwhale-ops/            # операционные сценарии поверх MCP + ссылка на kwhale-api
+    ├── kwhale-codebase/       # переносимая карта репозитория
+    ├── kwhale-connectors/     # внутренний контракт 9 серверных коннекторов
+    └── kwhale-proxy/          # sing-box и проксирование источников
 ```
 
-## Установка и запуск
+## Установка и подключение к агенту
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"      # + ".[fallback]" для yt-dlp
-.venv/bin/python -m pytest tests -q                              # тест-стенд
-.venv/bin/python scripts/smoke_playlists.py <playlist-url>       # живой smoke
-.venv/bin/python -m kwhale_agent.mcp_server                      # MCP (stdio)
+cd agent
+python3 -m venv .venv
+.venv/bin/pip install -e ".[dev,fallback]"   # ставит httpx[socks], fastmcp, pytest, yt-dlp
+.venv/bin/python -m pytest tests -v          # проверка тест-стенда без сети
+.venv/bin/python -m kwhale_agent.mcp_server  # запуск MCP (stdio)
 ```
 
-MCP зарегистрирован в `../.opencode/opencode.json`; скиллы подключены
-симлинками в `../.opencode/skills/`.
+Подключение пака к OpenCode / MCP-клиенту:
+- Скиллы можно подключать отдельно и переносимо — скопируй или прилинкуй подпапки `agent/skills/*` в каталог скиллов своего агента (например `.opencode/skills/`).
+- Шаблон конфига MCP лежит в `../release/.opencode/opencode.json.example`. В нём задаются путь к `<path-to-agent>/.venv/bin/python` и при желании env-параметры.
+- Для подключения внешнего агента **без MCP** достаточно приложить скилл `skills/kwhale-api/SKILL.md` — публичный URL сервиса, email и пароль агент запросит у пользователя сам (на проде `/openapi.json` и `/docs` могут отдавать `404`).
 
-## Конфигурация (env)
+## Конфигурация (опционально через env, или через MCP `login`)
 
 | Переменная | Назначение |
 |---|---|
-| `KWHALE_BASE_URL` | API KWhale (дефолт `http://127.0.0.1:19001/v1`) |
-| `KWHALE_EMAIL` / `KWHALE_PASSWORD` | аккаунт для операций с профилем |
-| `KWHALE_DOWNLOAD_DIR` | куда складывать файлы (`download_track mode=file`) |
-| `Kwhale_AGENT_VK_TOKEN` | токен VK для нативного парсинга VK-плейлистов |
-| `HTTPS_PROXY` | прокси для парсеров из RU (см. скилл kwhale-proxy) |
+| `KWHALE_BASE_URL` | API URL инстанса (пользовательский публичный URL с `/v1`; локальный пример: `http://127.0.0.1:19001/v1`) |
+| `KWHALE_EMAIL` / `KWHALE_PASSWORD` | учётные данные аккаунта (вход строго по **email**, не по `username`) |
+| `KWHALE_DOWNLOAD_DIR` | каталог для `download_track(mode="file")` (по умолчанию `./downloads`) |
+| `KWHALE_AGENT_VK_TOKEN` | токен VK для `VkPlaylistParser` (поддерживается legacy-алиас `Kwhale_AGENT_VK_TOKEN`) |
+| `HTTPS_PROXY` / `YTDLP_PROXY` | прокси для парсеров и `ytdlp_fallback` (см. скилл `kwhale-proxy`) |
 
-## MCP-тулзы
+Если `KWHALE_BASE_URL`, `KWHALE_EMAIL` и `KWHALE_PASSWORD` не заданы в env заранее, LLM-агент должен запросить их у пользователя и вызвать MCP-тулзу `login(email, password, base_url)` (либо выполнить `POST /v1/auth/login` по скиллу `kwhale-api`).
 
-`list_supported_platforms`, `detect_playlist_platform`, `parse_playlist`,
-`import_playlist_to_profile` (acceptance), `search_tracks`, `download_track`,
-`download_status`, `kwhale_status`.
+## Возможности MCP `kwhale-agent`
 
-Сценарии — скилл `kwhale-ops`. Правило: импорт в профиль — только с подтверждения
-пользователя; ошибки тулзы отдают `{"error": ...}`, а не падают.
-
-## Дизайн-решения
-
-- **Парслеры независимы от серверных коннекторов** — сначала тест-стенд
-  (`tests/`, `scripts/smoke_playlists.py`), потом интеграция; серверный код не
-  меняется.
-- **Интеграция только через публичный API** (`/v1`): поиск, создание плейлистов,
-  добавление треков. Скачивание в библиотеку = `PUT /tracks/{id}/like`
-  (семантика сервиса: лайк ставит ingest-джобу).
-- Матч треков: fuzzy «artist - title» (порог 62) + точный ISRC.
-
-## Приёмка (пройдена 2026-11-07)
-
-Сценарий «перенеси плейлист с Яндекс Музыки в профиль KWhale» выполнен через
-MCP-тулзы end-to-end: `music.yandex.ru/users/414787002/playlists/1024`
-(«Джаз: лучшее», 100 треков) → **98 совпадений** в каталоге → плейлист
-**id=13 «Джаз: лучшее (Yandex)» (97 уникальных треков)** в профиле
-`dueattendant149`; 2 трека честно в unmatched («no catalog match»).
-Живой smoke парсера Яндекса: 100/100 треков разобраны.
+- **Auth и инфо:** `login`, `logout`, `kwhale_status`
+- **Парсинг и перенос плейлистов:** `list_supported_platforms`, `detect_playlist_platform`, `parse_playlist`, `parse_track_list`, `import_playlist_to_profile` (новый плейлист или дозапись в `playlist_id`, `dry_run`)
+- **CRUD и редактирование плейлистов:** `list_playlists`, `get_playlist` (полная пагинация >200 треков), `create_playlist`, `update_playlist`, `delete_playlist`, `add_tracks_to_playlist` (батчинг до 500 при серверном лимите 1000), `remove_track_from_playlist`, `reorder_playlist_tracks`, `like_playlist_tracks`
+- **Каталог, загрузки и библиотека:** `search_tracks` (с `wait=true` по умолчанию), `get_track_details`, `like_track`, `download_track`, `download_status`, `upload_track`, `manage_enrichments`, `list_library`
+- **Рекомендации и шеринг:** `list_mixes`, `get_mix_tracks`, `prompt_mix`, `create_share_link`

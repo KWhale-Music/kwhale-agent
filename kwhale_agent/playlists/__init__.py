@@ -3,7 +3,7 @@
 Usage:
     from kwhale_agent.playlists import fetch_playlist
     parsed = await fetch_playlist("yandex", "https://music.yandex.ru/playlist/u-1")
-    # or let the registry detect the platform from the URL:
+    # or let the registry detect the platform from the URL/tracklist:
     parsed = await fetch_playlist("", "https://soundcloud.com/x/sets/y")
 """
 
@@ -11,17 +11,19 @@ from __future__ import annotations
 
 from .base import ParsedPlaylist, ParseError, PlaylistParser, TrackRef
 from .soundcloud import SoundcloudPlaylistParser
+from .textlist import TextListParser
 from .vk import VkPlaylistParser
 from .yandex import YandexPlaylistParser
-from .ytm import YtmPlaylistParser
 from .ytdlp_fallback import YtdlpFallbackParser
+from .ytm import YtmPlaylistParser
 
 _PARSERS: list[PlaylistParser] = [
     YandexPlaylistParser(),
     SoundcloudPlaylistParser(),
     YtmPlaylistParser(),
     VkPlaylistParser(),
-    YtdlpFallbackParser(),  # catch-all, last
+    TextListParser(),
+    YtdlpFallbackParser(),  # URL catch-all, last
 ]
 
 _BY_NAME: dict[str, PlaylistParser] = {}
@@ -44,14 +46,15 @@ def list_platforms() -> list[dict]:
 
 
 def detect_platform(ref: str) -> str | None:
-    """Platform id recognised from a URL/id ref (native parsers first)."""
+    """Platform id recognised from a URL, tracklist or id ref."""
     for p in _PARSERS:
-        if p.platform == "ytdlp":
+        if p.platform in ("ytdlp", "text"):
             continue
         if p.can_parse(ref):
             return p.platform
-    if _PARSERS[-1].can_parse(ref):
-        return "ytdlp"
+    for p in _PARSERS:
+        if p.platform in ("ytdlp", "text") and p.can_parse(ref):
+            return p.platform
     return None
 
 
@@ -65,22 +68,34 @@ def get_parser(platform: str) -> PlaylistParser:
 async def fetch_playlist(platform: str, ref: str, *, allow_fallback: bool = True) -> ParsedPlaylist:
     """Parse a playlist ref on the given platform (or auto-detect when empty).
 
-    Falls back to the yt-dlp parser when the native parser fails or needs
+    Falls back to the yt-dlp parser when a native URL parser fails or needs
     missing auth (disable with allow_fallback=False — used by the test stand).
     """
     parser = get_parser(platform) if platform else None
     if parser is None:
         detected = detect_platform(ref)
         if detected is None:
-            raise ParseError(f"cannot detect platform for {ref!r}")
+            raise ParseError(
+                f"cannot detect platform for {ref!r}; provide a public playlist URL or pass platform='text' with Artist - Title / CSV / M3U"
+            )
         parser = get_parser(detected)
 
     try:
         return await parser.fetch_playlist(ref)
-    except ParseError:
-        if not allow_fallback or parser.platform == "ytdlp":
+    except ParseError as e:
+        lower_ref = (ref or "").lower()
+        if "open.spotify.com/" in lower_ref or "music.apple.com/" in lower_ref:
+            raise ParseError(
+                f"{e} — Spotify/Apple Music web playlists are not scraped natively; export CSV or copy 'Artist - Title' lines and use platform='text'"
+            ) from e
+        if not allow_fallback or parser.platform in ("ytdlp", "text"):
             raise
-        return await get_parser("ytdlp").fetch_playlist(ref)
+        if not (ref or "").strip().startswith(("http://", "https://")):
+            raise
+        try:
+            return await get_parser("ytdlp").fetch_playlist(ref)
+        except ParseError:
+            raise e
 
 
 __all__ = [

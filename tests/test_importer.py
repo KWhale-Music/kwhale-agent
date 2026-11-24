@@ -7,18 +7,24 @@ from kwhale_agent.playlists.base import ParsedPlaylist, TrackRef
 
 
 class FakeBridge:
-    def __init__(self, catalog):
+    def __init__(self, catalog, playlists=None):
         self.catalog = catalog  # query-substring -> track dicts
+        self.playlists = playlists or {}
         self.created = []
         self.added = []
+        self.queries = []
 
     async def search(self, query, limit=10):
+        self.queries.append(query)
         q = query.lower()
         return [t for k, v in self.catalog.items() if k in q for t in v]
 
-    async def create_playlist(self, title, description=""):
-        self.created.append({"title": title, "description": description})
+    async def create_playlist(self, title, description="", visibility="private"):
+        self.created.append({"title": title, "description": description, "visibility": visibility})
         return {"id": 42, "title": title}
+
+    async def get_playlist(self, playlist_id):
+        return self.playlists[str(playlist_id)]
 
     async def add_tracks(self, playlist_id, track_ids):
         self.added.append((playlist_id, list(track_ids)))
@@ -78,3 +84,34 @@ async def test_import_dry_run_touches_nothing():
     assert report["playlistId"] is None
     assert report["matchedCount"] == 1
     assert bridge.created == [] and bridge.added == []
+
+
+def test_best_match_duration_tiebreaker():
+    ref = TrackRef(title="Echoes", artists=["Band"], duration_sec=180)
+    candidates = [
+        {"id": 1, "title": "Echoes (Remix)", "artists": ["Band"], "durationMs": 420000},
+        {"id": 2, "title": "Echoes", "artists": ["Band"], "durationMs": 181000},
+    ]
+    hit = best_match(ref, candidates)
+    assert hit and hit["id"] == 2
+
+
+@pytest.mark.asyncio
+async def test_import_fallback_clean_title_and_append_existing():
+    bridge = FakeBridge(
+        {
+            "main artist clean song": [{"id": 301, "title": "Clean Song", "artists": ["Main Artist"]}],
+            "other track": [{"id": 101, "title": "Track", "artists": ["Other"]}],
+        },
+        playlists={"7": {"id": "7", "title": "Existing", "tracks": [{"id": "101"}]}},
+    )
+    parsed = _pl(
+        TrackRef(title="Clean Song (2022 Remaster) (feat. Guest)", artists=["Main Artist", "Guest"]),
+        TrackRef(title="Track", artists=["Other"]),
+    )
+    report = await import_playlist(bridge, parsed, playlist_id="7")
+    assert report["playlistId"] == "7"
+    assert report["matchedCount"] == 2
+    assert report["addedCount"] == 1
+    assert bridge.created == []
+    assert bridge.added == [("7", [301])]

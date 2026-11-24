@@ -3,9 +3,12 @@
 Works for any URL yt-dlp understands (YouTube, SoundCloud, VK pages, ...).
 Used when a native parser is unavailable or fails. Entries are extracted flat
 (no media download); artists/titles are split from the entry label.
+Supports YTDLP_PROXY / HTTPS_PROXY env for routed access.
 """
 
 from __future__ import annotations
+
+import os
 
 from .base import ParsedPlaylist, ParseError, PlaylistParser, TrackRef
 
@@ -27,17 +30,26 @@ class YtdlpFallbackParser(PlaylistParser):
 
     async def fetch_playlist(self, ref: str) -> ParsedPlaylist:
         if not HAVE_YTDLP:
-            raise ParseError("yt-dlp is not installed (pip install yt-dlp)")
+            raise ParseError("yt-dlp is not installed (pip install 'kwhale-agent[fallback]')")
         import asyncio
 
+        proxy = (
+            os.environ.get("YTDLP_PROXY")
+            or os.environ.get("HTTPS_PROXY")
+            or os.environ.get("https_proxy")
+            or ""
+        ).strip()
+
         def _extract() -> dict:
-            opts = {
+            opts: dict = {
                 "quiet": True,
                 "no_warnings": True,
                 "extract_flat": "in_playlist",
                 "skip_download": True,
                 "playlistend": 500,
             }
+            if proxy:
+                opts["proxy"] = proxy
             with yt_dlp.YoutubeDL(opts) as ydl:
                 return ydl.extract_info(ref, download=False) or {}
 

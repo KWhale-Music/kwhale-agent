@@ -5,7 +5,7 @@ URLs:
   * https://vk.com/audio?z=audio_playlist<owner_id>_<playlist_id>
   * bare '<owner_id>_<playlist_id>'
 
-Token: env Kwhale_AGENT_VK_TOKEN (VK access token with audio scope).
+Token: env KWHALE_AGENT_VK_TOKEN (or legacy alias Kwhale_AGENT_VK_TOKEN).
 Without a token ParseError is raised — callers may use ytdlp_fallback.
 """
 
@@ -33,9 +33,12 @@ class VkPlaylistParser(PlaylistParser):
         return "vk.com" in ref or bool(_REF_RE.fullmatch(ref.strip()))
 
     async def fetch_playlist(self, ref: str) -> ParsedPlaylist:
-        token = os.environ.get("Kwhale_AGENT_VK_TOKEN", "")
+        token = os.environ.get("KWHALE_AGENT_VK_TOKEN") or os.environ.get("Kwhale_AGENT_VK_TOKEN") or ""
         if not token:
-            raise ParseError("vk: set Kwhale_AGENT_VK_TOKEN (or use the ytdlp fallback)")
+            raise ParseError(
+                "vk: set KWHALE_AGENT_VK_TOKEN (legacy alias Kwhale_AGENT_VK_TOKEN) "
+                "or use the ytdlp fallback"
+            )
         m = _REF_RE.search(ref)
         if not m:
             raise ParseError(f"vk: cannot parse playlist ref {ref!r}")
