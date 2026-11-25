@@ -3,3 +3,11 @@ __pycache__/
 *.egg-info/
 downloads/
 .pytest_cache/
+
+# GitHub safety rules
+.env
+secrets.env
+*.jks
+*.keystore
+*.dump
+*.dump.gz
