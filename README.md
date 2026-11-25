@@ -17,7 +17,7 @@
 </div>
 
 Everything an LLM agent needs to manage a user's music collection on a
-[KWhale Server](https://github.com/kwhale-music/kwhale-server): standalone playlist
+[KWhale Server](https://github.com/KWhale-Music/kwhale-server): standalone playlist
 parsers (Yandex Music, SoundCloud, YouTube Music, VK, text/CSV/M3U lists, `yt-dlp`
 fallback), a parallel-matching importer, a full-featured **MCP server**, and a
 **portable skill pack** that works with any agent — with or without MCP.
@@ -45,7 +45,7 @@ fallback), a parallel-matching importer, a full-featured **MCP server**, and a
 ## 🚀 Quickstart
 
 ```bash
-git clone https://github.com/kwhale-music/kwhale-agent.git
+git clone https://github.com/KWhale-Music/kwhale-agent.git
 cd kwhale-agent
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev,fallback]"   # httpx[socks], fastmcp, pytest, yt-dlp
@@ -97,7 +97,7 @@ tests/              # isolated, network-free test stand
 
 ## 🧭 Author's review
 
-*Honest notes from the author — this section is a draft and will keep evolving.*
+*Honest notes from the author — trade-offs and open rough edges.*
 
 What I'm genuinely happy with:
 

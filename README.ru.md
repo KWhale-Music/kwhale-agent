@@ -17,7 +17,7 @@
 </div>
 
 Всё, что LLM-агенту нужно для управления музыкальной коллекцией пользователя на
-[KWhale Server](https://github.com/kwhale-music/kwhale-server): standalone-парсеры
+[KWhale Server](https://github.com/KWhale-Music/kwhale-server): standalone-парсеры
 плейлистов (Яндекс Музыка, SoundCloud, YouTube Music, VK, списки текстом/CSV/M3U,
 fallback через `yt-dlp`), импортёр с параллельным матчингом, полноценный
 **MCP-сервер** и **переносимый пак скиллов**, работающий с любым агентом —
@@ -46,7 +46,7 @@ fallback через `yt-dlp`), импортёр с параллельным ма
 ## 🚀 Быстрый старт
 
 ```bash
-git clone https://github.com/kwhale-music/kwhale-agent.git
+git clone https://github.com/KWhale-Music/kwhale-agent.git
 cd kwhale-agent
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev,fallback]"   # httpx[socks], fastmcp, pytest, yt-dlp
@@ -98,7 +98,7 @@ tests/                   # изолированный тест-стенд без
 
 ## 🧭 Review от автора
 
-*Честные заметки автора — раздел в черновике и будет дополняться.*
+*Честные заметки автора — плюсы, компромиссы и шероховатости.*
 
 Чем я реально доволен:
 
